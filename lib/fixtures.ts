@@ -1,0 +1,116 @@
+import type { AssessmentAnswers } from "./types";
+import { emptyAnswers } from "./types";
+
+export function sampleAnswers(overrides: Partial<AssessmentAnswers> = {}): AssessmentAnswers {
+  return {
+    ...emptyAnswers(),
+    nomeCompleto: "Participante de Teste",
+    idade: 45,
+    cidade: "Niterói",
+    estado: "RJ",
+    whatsapp: "21988887777",
+    email: "",
+    preenchidoPor: "propria",
+    melhorPeriodo: "tarde",
+    motivoPrincipal: "forca",
+    dificuldadePrincipal: "Cansaço ao subir escadas",
+    atividadesDesejadas: ["Caminhar", "Subir e descer escadas"],
+    objetivoProximosMeses: "Ganhar confiança para caminhar com mais regularidade",
+    receioExercicios: "nao",
+    orientacaoLimitarExercicios: "nao",
+    diagnosticoRelevante: "nao",
+    dorPeitoEsforco: "nao",
+    faltaArDesproporcional: "nao",
+    desmaio: "nao",
+    tonturasRecorrentes: "nao",
+    fraquezaNeurologicaNova: "nao",
+    perdaControleEsfincterComDorLombar: "nao",
+    cirurgiaInternacaoRecente: "nao",
+    tratamentoAtual: "nao",
+    medicamentos: "nao",
+    liberacaoExercicios: "nao_se_aplica",
+    recomendacaoEspecifica: "nao",
+    relataLesaoDor: "nao",
+    capacidadeCaminhar: "pouca_dificuldade",
+    capacidadeEscadas: "pouca_dificuldade",
+    capacidadeLevantarCadeira: "sem_dificuldade",
+    capacidadeCarregarLeve: "sem_dificuldade",
+    capacidadeEquilibrio: "sem_dificuldade",
+    precisaAjudaCotidiano: "nao",
+    usaApoio: "nao",
+    confiancaMovimento: 7,
+    praticaAtualmente: "nao",
+    oQueNaoFuncionou: "Treinos genéricos de academia",
+    oQueGosta: "Caminhada leve",
+    oQueEvita: "Saltos",
+    tempoPorSessao: "40 minutos",
+    tempoPorSemana: "2 a 3 sessões",
+    equipamentos: ["Nenhum"],
+    barreiraPrincipal: "tempo",
+    modalidadeInteresse: "ainda_nao_sei",
+    cienciaNaoSubstituiClinico: true,
+    autorizacaoDadosSaude: true,
+    cienciaEnvioWhatsapp: true,
+    consentimentoMarketing: false,
+    website: "",
+    startedAt: Date.now() - 60_000,
+    ...overrides,
+  };
+}
+
+export function elderlySample(): AssessmentAnswers {
+  return sampleAnswers({
+    nomeCompleto: "Participante Idoso de Teste",
+    idade: 72,
+    motivoPrincipal: "equilibrio",
+    dificuldadePrincipal: "Insegurança ao descer a calçada",
+    capacidadeEquilibrio: "pouca_dificuldade",
+    caiu12Meses: "nao",
+    inseguroEmPeOuCaminhar: "sim",
+    medoDeCair: "sim",
+    dificuldadeEnxergarOuObstaculos: "nao",
+    alguemAcompanhaAtividades: "nao",
+  });
+}
+
+export function injurySample(): AssessmentAnswers {
+  return sampleAnswers({
+    motivoPrincipal: "retorno_lesao",
+    relataLesaoDor: "sim",
+    dificuldadePrincipal: "Joelho direito após período de tratamento",
+    regiaoAfetada: ["Joelho"],
+    ladoAfetado: "direito",
+    diagnosticoProfissional: "sim",
+    diagnosticoInformado: "Lesão informada pelo profissional de saúde (teste)",
+    inicioQuando: "Há cerca de 4 meses",
+    eventoEspecifico: "nao",
+    faseLesao: "acompanhamento_longo",
+    fisioterapia: "sim",
+    fisioterapiaAndamento: "nao",
+    dorRepouso: 2,
+    dorMovimento: 5,
+    frequenciaDor: "algumas_vezes_semana",
+    oQuePiora: "Descer escada",
+    oQueAlivia: "Repouso breve",
+    perdaForca: "sim",
+    dormenciaFormigamento: "nao",
+    instabilidade: "sim",
+    movimentosEvitar: "Agachamento profundo, segundo orientação anterior",
+    interfereSono: "nao",
+    interfereTrabalho: "nao",
+    interfereCotidiano: "sim",
+    liberacaoExercicios: "sim",
+    caiu12Meses: "nao",
+    inseguroEmPeOuCaminhar: "sim",
+    medoDeCair: "nao",
+    dificuldadeEnxergarOuObstaculos: "nao",
+    alguemAcompanhaAtividades: "nao",
+  });
+}
+
+export function urgentSample(): AssessmentAnswers {
+  return sampleAnswers({
+    dorPeitoEsforco: "sim",
+    faltaArDesproporcional: "nao",
+  });
+}

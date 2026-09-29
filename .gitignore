@@ -1,0 +1,16 @@
+node_modules
+.next
+out
+data/*
+!data/.gitkeep
+!data/test-output/.gitkeep
+.env
+.env.local
+.env.*.local
+*.db
+*.db-shm
+*.db-wal
+coverage
+vitest.config.ts.timestamp-*
+uploads/*
+!uploads/.gitkeep
