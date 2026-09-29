@@ -4,6 +4,9 @@ import { verifyPassword } from "./crypto";
 
 const COOKIE = "admin_session";
 
+/** Temporário: área do professor sem senha. Voltar a false quando o acesso for só do professor. */
+export const ADMIN_AUTH_OPEN = true;
+
 function secret() {
   const value = process.env.ADMIN_SESSION_SECRET;
   if (!value || value.length < 32) {
@@ -13,6 +16,7 @@ function secret() {
 }
 
 export async function loginAdmin(password: string): Promise<boolean> {
+  if (ADMIN_AUTH_OPEN) return true;
   const expected = process.env.ADMIN_PASSWORD;
   if (!expected) return false;
   try {
@@ -44,6 +48,7 @@ export async function logoutAdmin() {
 }
 
 export async function isAdmin(): Promise<boolean> {
+  if (ADMIN_AUTH_OPEN) return true;
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
   if (!token) return false;
