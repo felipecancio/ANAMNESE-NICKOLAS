@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Figtree, Fraunces } from "next/font/google";
 import "./globals.css";
-import { getStore } from "@/lib/store";
 import { SITE } from "@/lib/site";
 
 const sans = Figtree({
@@ -27,13 +26,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  let cref = process.env.NEXT_PUBLIC_CREF || "";
-  try {
-    const settings = await (await getStore()).getSettings();
-    cref = settings.cref || cref;
-  } catch {
-    cref = process.env.NEXT_PUBLIC_CREF || "";
-  }
+  const cref = process.env.NEXT_PUBLIC_CREF || "";
 
   return (
     <html lang="pt-BR" className={`${sans.variable} ${serif.variable}`}>

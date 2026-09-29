@@ -2,6 +2,9 @@
   "name": "professor-nickolas-amaral",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
@@ -12,10 +15,7 @@
     "test:pdf": "tsx scripts/generate-test-pdf.ts"
   },
   "dependencies": {
-    "@libsql/client": "^0.14.0",
-    "drizzle-orm": "^0.39.3",
     "jose": "^6.0.10",
-    "nanoid": "^5.1.5",
     "next": "^15.5.4",
     "pdf-lib": "^1.17.1",
     "react": "^19.1.0",

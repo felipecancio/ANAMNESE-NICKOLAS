@@ -1,4 +1,3 @@
-import { createClient, type Client } from "@libsql/client";
 import fs from "fs";
 import path from "path";
 import { protocolCode, randomId } from "./crypto";
@@ -11,102 +10,80 @@ import type {
   WhatsappStatus,
 } from "./types";
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS assessments (
-  id TEXT PRIMARY KEY,
-  protocol TEXT NOT NULL UNIQUE,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  status TEXT NOT NULL,
-  payload TEXT NOT NULL,
-  flags TEXT NOT NULL,
-  skipped_questions TEXT NOT NULL,
-  whatsapp_status TEXT NOT NULL,
-  whatsapp_message_id TEXT,
-  whatsapp_error TEXT,
-  whatsapp_attempts INTEGER NOT NULL DEFAULT 0,
-  last_whatsapp_attempt_at TEXT,
-  pdf_filename TEXT,
-  client_request_id TEXT NOT NULL UNIQUE
-);
+type RateMap = Record<string, number[]>;
 
-CREATE TABLE IF NOT EXISTS site_settings (
-  id TEXT PRIMARY KEY,
-  cref TEXT,
-  photo_path TEXT,
-  responsible_name TEXT,
-  responsible_email TEXT,
-  retention_note TEXT,
-  updated_at TEXT NOT NULL
-);
+type DbShape = {
+  assessments: StoredAssessment[];
+  settings: SiteSettings;
+  rateLimits: RateMap;
+};
 
-CREATE TABLE IF NOT EXISTS rate_limits (
-  key_hash TEXT PRIMARY KEY,
-  hits TEXT NOT NULL
-);
-`;
-
-function rowToAssessment(row: Record<string, unknown>): StoredAssessment {
+function defaultSettings(): SiteSettings {
   return {
-    id: String(row.id),
-    protocol: String(row.protocol),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-    status: String(row.status) as AssessmentStatus,
-    answers: JSON.parse(String(row.payload)) as AssessmentAnswers,
-    flags: JSON.parse(String(row.flags)) as PriorityFlag[],
-    skippedQuestionIds: JSON.parse(String(row.skipped_questions)) as string[],
-    whatsappStatus: String(row.whatsapp_status) as WhatsappStatus,
-    whatsappMessageId: row.whatsapp_message_id ? String(row.whatsapp_message_id) : null,
-    whatsappError: row.whatsapp_error ? String(row.whatsapp_error) : null,
-    whatsappAttempts: Number(row.whatsapp_attempts ?? 0),
-    lastWhatsappAttemptAt: row.last_whatsapp_attempt_at ? String(row.last_whatsapp_attempt_at) : null,
-    pdfFilename: row.pdf_filename ? String(row.pdf_filename) : null,
-    clientRequestId: String(row.client_request_id),
+    cref: process.env.NEXT_PUBLIC_CREF || "",
+    photoPath: process.env.NEXT_PUBLIC_PHOTO_URL || "",
+    responsibleName: process.env.PRIVACY_CONTROLLER_NAME || "Professor Nickolas Amaral",
+    responsibleEmail: process.env.PRIVACY_CONTACT_EMAIL || "",
+    retentionNote: process.env.RETENTION_DAYS ? `${process.env.RETENTION_DAYS} dias` : "",
   };
 }
 
-export class AssessmentStore {
-  constructor(private client: Client) {}
+function emptyDb(): DbShape {
+  return {
+    assessments: [],
+    settings: defaultSettings(),
+    rateLimits: {},
+  };
+}
 
-  static async open(url?: string): Promise<AssessmentStore> {
-    const dbUrl = url || process.env.DATABASE_URL || "file:./data/avaliacoes.db";
-    if (dbUrl.startsWith("file:")) {
-      const filePath = dbUrl.replace(/^file:/, "");
-      const abs = path.isAbsolute(filePath) ? filePath : path.join(process.cwd(), filePath);
-      fs.mkdirSync(path.dirname(abs), { recursive: true });
-      const client = createClient({ url: `file:${abs}` });
-      const store = new AssessmentStore(client);
-      await store.migrate();
-      return store;
-    }
-    const client = createClient({ url: dbUrl, authToken: process.env.DATABASE_AUTH_TOKEN });
-    const store = new AssessmentStore(client);
-    await store.migrate();
+function writableRoot(): string {
+  if (process.env.VERCEL) return path.join("/tmp", "nickolas-data");
+  return path.join(process.cwd(), "data");
+}
+
+function dbFilePath(): string {
+  return path.join(writableRoot(), "store.json");
+}
+
+async function readDb(file: string): Promise<DbShape> {
+  try {
+    const raw = await fs.promises.readFile(file, "utf8");
+    const parsed = JSON.parse(raw) as Partial<DbShape>;
+    return {
+      assessments: parsed.assessments ?? [],
+      settings: { ...defaultSettings(), ...parsed.settings },
+      rateLimits: parsed.rateLimits ?? {},
+    };
+  } catch {
+    return emptyDb();
+  }
+}
+
+async function writeDb(file: string, data: DbShape): Promise<void> {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  await fs.promises.writeFile(file, JSON.stringify(data));
+}
+
+export class AssessmentStore {
+  constructor(
+    private data: DbShape,
+    private persist: (() => Promise<void>) | null,
+  ) {}
+
+  static async open(): Promise<AssessmentStore> {
+    const file = dbFilePath();
+    const data = await readDb(file);
+    const store = new AssessmentStore(data, () => writeDb(file, data));
+    await store.persist?.();
     return store;
   }
 
   static async memory(): Promise<AssessmentStore> {
-    const client = createClient({ url: ":memory:" });
-    const store = new AssessmentStore(client);
-    await store.migrate();
-    return store;
+    return new AssessmentStore(emptyDb(), null);
   }
 
-  async migrate() {
-    await this.client.executeMultiple(SCHEMA);
-    const existing = await this.client.execute("SELECT id FROM site_settings WHERE id = 'default'");
-    if (existing.rows.length === 0) {
-      await this.client.execute({
-        sql: `INSERT INTO site_settings (id, cref, photo_path, responsible_name, responsible_email, retention_note, updated_at)
-              VALUES ('default', '', '', ?, ?, '', ?)`,
-        args: [
-          process.env.PRIVACY_CONTROLLER_NAME || "Professor Nickolas Amaral",
-          process.env.PRIVACY_CONTACT_EMAIL || "",
-          new Date().toISOString(),
-        ],
-      });
-    }
+  private async save() {
+    if (this.persist) await this.persist();
   }
 
   async create(input: {
@@ -138,66 +115,27 @@ export class AssessmentStore {
       pdfFilename: null,
       clientRequestId: input.clientRequestId,
     };
-
-    await this.client.execute({
-      sql: `INSERT INTO assessments (
-        id, protocol, created_at, updated_at, status, payload, flags, skipped_questions,
-        whatsapp_status, whatsapp_message_id, whatsapp_error, whatsapp_attempts,
-        last_whatsapp_attempt_at, pdf_filename, client_request_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        record.id,
-        record.protocol,
-        record.createdAt,
-        record.updatedAt,
-        record.status,
-        JSON.stringify(record.answers),
-        JSON.stringify(record.flags),
-        JSON.stringify(record.skippedQuestionIds),
-        record.whatsappStatus,
-        null,
-        null,
-        0,
-        null,
-        null,
-        record.clientRequestId,
-      ],
-    });
+    this.data.assessments.unshift(record);
+    await this.save();
     return record;
   }
 
   async getById(id: string): Promise<StoredAssessment | null> {
-    const result = await this.client.execute({
-      sql: "SELECT * FROM assessments WHERE id = ? OR protocol = ?",
-      args: [id, id],
-    });
-    if (!result.rows[0]) return null;
-    return rowToAssessment(result.rows[0] as unknown as Record<string, unknown>);
+    return this.data.assessments.find((item) => item.id === id || item.protocol === id) ?? null;
   }
 
   async getByClientRequestId(id: string): Promise<StoredAssessment | null> {
-    const result = await this.client.execute({
-      sql: "SELECT * FROM assessments WHERE client_request_id = ?",
-      args: [id],
-    });
-    if (!result.rows[0]) return null;
-    return rowToAssessment(result.rows[0] as unknown as Record<string, unknown>);
+    return this.data.assessments.find((item) => item.clientRequestId === id) ?? null;
   }
 
   async getByMessageId(messageId: string): Promise<StoredAssessment | null> {
-    const result = await this.client.execute({
-      sql: "SELECT * FROM assessments WHERE whatsapp_message_id = ?",
-      args: [messageId],
-    });
-    if (!result.rows[0]) return null;
-    return rowToAssessment(result.rows[0] as unknown as Record<string, unknown>);
+    return this.data.assessments.find((item) => item.whatsappMessageId === messageId) ?? null;
   }
 
   async list(): Promise<StoredAssessment[]> {
-    const result = await this.client.execute(
-      "SELECT * FROM assessments ORDER BY created_at DESC LIMIT 200",
-    );
-    return result.rows.map((row) => rowToAssessment(row as unknown as Record<string, unknown>));
+    return [...this.data.assessments]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 200);
   }
 
   async update(id: string, patch: Partial<StoredAssessment>): Promise<StoredAssessment | null> {
@@ -208,70 +146,26 @@ export class AssessmentStore {
       ...patch,
       updatedAt: new Date().toISOString(),
     };
-    await this.client.execute({
-      sql: `UPDATE assessments SET
-        updated_at = ?, status = ?, payload = ?, flags = ?, skipped_questions = ?,
-        whatsapp_status = ?, whatsapp_message_id = ?, whatsapp_error = ?,
-        whatsapp_attempts = ?, last_whatsapp_attempt_at = ?, pdf_filename = ?
-        WHERE id = ?`,
-      args: [
-        next.updatedAt,
-        next.status,
-        JSON.stringify(next.answers),
-        JSON.stringify(next.flags),
-        JSON.stringify(next.skippedQuestionIds),
-        next.whatsappStatus,
-        next.whatsappMessageId,
-        next.whatsappError,
-        next.whatsappAttempts,
-        next.lastWhatsappAttemptAt,
-        next.pdfFilename,
-        next.id,
-      ],
-    });
+    this.data.assessments = this.data.assessments.map((item) => (item.id === current.id ? next : item));
+    await this.save();
     return next;
   }
 
   async getSettings(): Promise<SiteSettings> {
-    const result = await this.client.execute("SELECT * FROM site_settings WHERE id = 'default'");
-    const row = result.rows[0] as unknown as Record<string, unknown> | undefined;
-    return {
-      cref: String(row?.cref ?? process.env.NEXT_PUBLIC_CREF ?? ""),
-      photoPath: String(row?.photo_path ?? process.env.NEXT_PUBLIC_PHOTO_URL ?? ""),
-      responsibleName: String(row?.responsible_name ?? process.env.PRIVACY_CONTROLLER_NAME ?? "Professor Nickolas Amaral"),
-      responsibleEmail: String(row?.responsible_email ?? process.env.PRIVACY_CONTACT_EMAIL ?? ""),
-      retentionNote: String(row?.retention_note ?? (process.env.RETENTION_DAYS ? `${process.env.RETENTION_DAYS} dias` : "")),
-    };
+    return { ...defaultSettings(), ...this.data.settings };
   }
 
   async saveSettings(settings: SiteSettings): Promise<void> {
-    await this.client.execute({
-      sql: `UPDATE site_settings SET cref = ?, photo_path = ?, responsible_name = ?, responsible_email = ?, retention_note = ?, updated_at = ? WHERE id = 'default'`,
-      args: [
-        settings.cref,
-        settings.photoPath,
-        settings.responsibleName,
-        settings.responsibleEmail,
-        settings.retentionNote,
-        new Date().toISOString(),
-      ],
-    });
+    this.data.settings = settings;
+    await this.save();
   }
 
   async hitRateLimit(key: string, limit: number, windowMs: number): Promise<boolean> {
     const now = Date.now();
-    const result = await this.client.execute({
-      sql: "SELECT hits FROM rate_limits WHERE key_hash = ?",
-      args: [key],
-    });
-    const hits: number[] = result.rows[0]
-      ? (JSON.parse(String(result.rows[0].hits)) as number[]).filter((t) => now - t < windowMs)
-      : [];
+    const hits = (this.data.rateLimits[key] ?? []).filter((time) => now - time < windowMs);
     hits.push(now);
-    await this.client.execute({
-      sql: "INSERT INTO rate_limits (key_hash, hits) VALUES (?, ?) ON CONFLICT(key_hash) DO UPDATE SET hits = excluded.hits",
-      args: [key, JSON.stringify(hits)],
-    });
+    this.data.rateLimits[key] = hits;
+    await this.save();
     return hits.length > limit;
   }
 }
@@ -284,21 +178,20 @@ export function getStore(): Promise<AssessmentStore> {
 }
 
 export function pdfDir(): string {
-  const dir = path.join(process.cwd(), "data", "pdfs");
+  const dir = path.join(writableRoot(), "pdfs");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
 export function uploadsDir(): string {
-  const dir = path.join(process.cwd(), "data", "uploads");
+  const dir = path.join(writableRoot(), "uploads");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
 export async function savePdfFile(protocol: string, bytes: Uint8Array): Promise<string> {
   const filename = `${protocol}.pdf`;
-  const full = path.join(pdfDir(), filename);
-  await fs.promises.writeFile(full, bytes);
+  await fs.promises.writeFile(path.join(pdfDir(), filename), bytes);
   return filename;
 }
 

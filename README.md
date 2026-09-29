@@ -8,7 +8,7 @@ Landing page e anamnese inicial em português do Brasil. As respostas são valid
 - Formulário em 7 etapas, com ramificações, triagem e interrupção em sintomas potencialmente urgentes (orientação para o SAMU 192).
 - PDF gerado no servidor, com todas as perguntas e “Não se aplica” quando a lógica condicional pula um bloco.
 - Painel administrativo com senha, listagem, download do PDF, cadastro de foto/CREF e reenvio.
-- Banco SQLite local (`data/avaliacoes.db`) e schema equivalente para Supabase.
+- Banco local em arquivo (`data/store.json`).
 
 ## Configuração local
 
@@ -50,14 +50,27 @@ O número `5522997231553` é o **destino**. Ele **não** envia a mensagem para s
 
 Reenvio: no detalhe da avaliação, use **Reenviar PDF pelo WhatsApp**. Não há reenvio automático infinito; falhas de credencial não são repetidas às cegas.
 
-## Publicação
+## Publicação na Vercel
+
+A Vercel não aceita bem SQLite nativo nem gravação na pasta do projeto. Este app já usa armazenamento em arquivo JSON e, na Vercel, grava em `/tmp`.
+
+1. Importe o repositório `felipecancio/ANAMNESE-NICKOLAS`.
+2. Framework: **Next.js**.
+3. Em **Settings → Environment Variables**, cadastre pelo menos:
+
+- `ADMIN_PASSWORD`
+- `ADMIN_SESSION_SECRET` (mínimo 32 caracteres)
+- `NEXT_PUBLIC_SITE_URL` (URL `https://...` do projeto na Vercel)
+- `PRIVACY_CONTACT_EMAIL`
+- `PRIVACY_CONTROLLER_NAME`
+
+4. Faça o deploy de novo após salvar as variáveis.
+
+Na Vercel o `/tmp` é temporário: avaliações e PDFs podem sumir entre instâncias. Para guarda permanente, publique em um VPS (`npm run build && npm start`) ou ligue um banco hospedado depois.
 
 - Sirva o site em **HTTPS**.
-- Mantenha `.env` só no servidor. Nunca commite tokens.
-- Recomenda-se VPS Node (`npm run build && npm start`) para o SQLite local persistir. Na Vercel, use Postgres/Supabase (`supabase/schema.sql`) e armazene PDFs em bucket **privado**.
+- Mantenha segredos só no painel da Vercel. Nunca commite `.env.local`.
 - Cadastre foto real e CREF no painel somente com dados verificados.
-- Defina o prazo de retenção na política (campo do painel). Enquanto vazio, o texto permanece “prazo a definir”.
-- Teste: ramificações, pessoa com 60+ anos, urgência (dor no peito), PDF completo, clique no `wa.me`, falha/reenvio da API e login do admin.
 
 ## Privacidade
 
